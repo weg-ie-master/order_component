@@ -21,9 +21,9 @@ jobs:
       - name: Abhängigkeiten installieren
         run: pip install -r scripts/requirements.txt
 
-      - name: order_component aus Dremio abrufen
+      - name: order_component aus Dremio abrufen (Arrow Flight)
         env:
-          DREMIO_BASE_URL: ${{ secrets.DREMIO_BASE_URL }}
+          DREMIO_FLIGHT_ENDPOINT: ${{ vars.DREMIO_FLIGHT_ENDPOINT }}   # optional, Default grpc+tls://data.dremio.cloud:443
           DREMIO_PAT: ${{ secrets.DREMIO_PAT }}
           DREMIO_PROJECT_ID: ${{ secrets.DREMIO_PROJECT_ID }}
           DREMIO_SQL_PATH: ${{ vars.DREMIO_SQL_PATH }}   # z.B. "Space"."Folder"."order_component"
@@ -35,5 +35,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: order_component-${{ github.run_id }}
-          path: output/order_component.csv
+          path: output/order_component.parquet
           retention-days: 14
