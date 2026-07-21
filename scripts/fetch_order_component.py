@@ -1,11 +1,19 @@
 """
-Ruft das Datenprodukt order_component über die Dremio REST API v3 ab
+Ruft das Datenprodukt order_component über die Dremio CLOUD REST API (v0) ab
 und schreibt das Ergebnis als CSV nach output/order_component.csv.
 
+Hinweis: Dremio Cloud (app.dremio.cloud) hat eine andere API-Struktur als
+selbst-gehostetes Dremio Software. Die API läuft über eine eigene Domain
+(api.dremio.cloud) und jede Anfrage braucht die Project ID im Pfad.
+
 Benötigte Umgebungsvariablen (siehe GitHub Secrets/Variables):
-- DREMIO_BASE_URL   z.B. https://dremio.weg.net  (ohne trailing slash)
-- DREMIO_PAT        Personal Access Token (Dremio -> Account Settings -> Personal Access Tokens)
-- DREMIO_SQL_PATH   voll qualifizierter Pfad zur Tabelle, z.B. "PP"."order_component"
+- DREMIO_BASE_URL     API-Control-Plane-URL, NICHT die Web-UI-URL.
+                      US: https://api.dremio.cloud
+                      EU: https://api.eu.dremio.cloud
+- DREMIO_PAT          Personal Access Token (Dremio Cloud -> User Settings -> Personal Access Tokens)
+- DREMIO_PROJECT_ID   Project ID aus Dremio Cloud -> Project Settings -> General
+- DREMIO_SQL_PATH     voll qualifizierter Pfad zur Tabelle, z.B. "Athena"."pp_dev"."pp"."order_component"
+                      (jede Ebene einzeln in doppelten Anführungszeichen)
 """
 
 import os
@@ -16,7 +24,10 @@ import requests
 
 BASE_URL = os.environ["DREMIO_BASE_URL"].rstrip("/")
 PAT = os.environ["DREMIO_PAT"]
+PROJECT_ID = os.environ["DREMIO_PROJECT_ID"]
 SQL_PATH = os.environ.get("DREMIO_SQL_PATH", '"order_component"')
+
+API_ROOT = f"{BASE_URL}/v0/projects/{PROJECT_ID}"
 
 HEADERS = {
     "Authorization": f"Bearer {PAT}",
@@ -28,18 +39,31 @@ POLL_TIMEOUT_SEC = 600
 PAGE_SIZE = 500
 
 
+def _parse_json(resp: requests.Response):
+    """Gibt eine klare Fehlermeldung aus, falls die Antwort kein JSON ist
+    (z.B. HTML-Loginseite bei falscher URL/Project ID)."""
+    try:
+        return resp.json()
+    except ValueError:
+        preview = resp.text[:200].replace("\n", " ")
+        raise RuntimeError(
+            f"Keine JSON-Antwort von {resp.url} (Status {resp.status_code}). "
+            f"Prüfe DREMIO_BASE_URL und DREMIO_PROJECT_ID. Antwort-Vorschau: {preview}"
+        )
+
+
 def submit_query(sql: str) -> str:
-    resp = requests.post(f"{BASE_URL}/api/v3/sql", headers=HEADERS, json={"sql": sql})
+    resp = requests.post(f"{API_ROOT}/sql", headers=HEADERS, json={"sql": sql})
     resp.raise_for_status()
-    return resp.json()["id"]
+    return _parse_json(resp)["id"]
 
 
 def wait_for_job(job_id: str) -> dict:
     elapsed = 0
     while elapsed < POLL_TIMEOUT_SEC:
-        resp = requests.get(f"{BASE_URL}/api/v3/job/{job_id}", headers=HEADERS)
+        resp = requests.get(f"{API_ROOT}/job/{job_id}", headers=HEADERS)
         resp.raise_for_status()
-        job = resp.json()
+        job = _parse_json(resp)
         state = job["jobState"]
         if state == "COMPLETED":
             return job
@@ -56,12 +80,12 @@ def fetch_all_rows(job_id: str) -> tuple[list[str], list[list]]:
     offset = 0
     while True:
         resp = requests.get(
-            f"{BASE_URL}/api/v3/job/{job_id}/results",
+            f"{API_ROOT}/job/{job_id}/results",
             headers=HEADERS,
             params={"offset": offset, "limit": PAGE_SIZE},
         )
         resp.raise_for_status()
-        data = resp.json()
+        data = _parse_json(resp)
         if not columns:
             columns = [c["name"] for c in data.get("schema", [])]
         batch = data.get("rows", [])

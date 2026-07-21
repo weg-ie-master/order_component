@@ -1,0 +1,37 @@
+name: order_component Dremio Sync
+
+on:
+  schedule:
+    # täglich um 06:30 UTC = 08:30 CEST (nach der Datenaktualisierung um 06:00)
+    - cron: "30 6 * * *"
+  workflow_dispatch: {}   # manueller Start über "Run workflow" zum Testen
+
+jobs:
+  fetch-order-component:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Repo auschecken
+        uses: actions/checkout@v4
+
+      - name: Python einrichten
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Abhängigkeiten installieren
+        run: pip install -r scripts/requirements.txt
+
+      - name: order_component aus Dremio abrufen
+        env:
+          DREMIO_BASE_URL: ${{ secrets.DREMIO_BASE_URL }}
+          DREMIO_PAT: ${{ secrets.DREMIO_PAT }}
+          DREMIO_PROJECT_ID: ${{ secrets.DREMIO_PROJECT_ID }}
+          DREMIO_SQL_PATH: ${{ vars.DREMIO_SQL_PATH }}   # z.B. "Space"."Folder"."order_component"
+        run: python scripts/fetch_order_component.py
+
+      - name: Export als Artefakt hochladen
+        uses: actions/upload-artifact@v4
+        with:
+          name: order_component-${{ github.run_id }}
+          path: output/order_component.csv
+          retention-days: 14
