@@ -25,7 +25,8 @@ jobs:
         env:
           DREMIO_BASE_URL: ${{ secrets.DREMIO_BASE_URL }}
           DREMIO_PAT: ${{ secrets.DREMIO_PAT }}
-          DREMIO_SQL_PATH: ${{ vars.DREMIO_SQL_PATH }}   # z.B. Space.Folder.order_component
+          DREMIO_PROJECT_ID: ${{ secrets.DREMIO_PROJECT_ID }}
+          DREMIO_SQL_PATH: ${{ vars.DREMIO_SQL_PATH }}   # z.B. "Space"."Folder"."order_component"
         run: python scripts/fetch_order_component.py
 
       - name: Export als Artefakt hochladen
