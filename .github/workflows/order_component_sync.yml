@@ -27,6 +27,7 @@ jobs:
           DREMIO_PAT: ${{ secrets.DREMIO_PAT }}
           DREMIO_PROJECT_ID: ${{ secrets.DREMIO_PROJECT_ID }}
           DREMIO_SQL_PATH: ${{ vars.DREMIO_SQL_PATH }}   # z.B. "Space"."Folder"."order_component"
+          DREMIO_SQL_WHERE: ${{ vars.DREMIO_SQL_WHERE }}   # optional, z.B. plant = '4103'
           DREMIO_SQL_LIMIT: ${{ vars.DREMIO_SQL_LIMIT }}   # optional, für Testläufe, z.B. "100"
         run: python scripts/fetch_order_component.py
 
