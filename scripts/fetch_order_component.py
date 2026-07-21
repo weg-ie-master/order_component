@@ -14,6 +14,9 @@ Benötigte Umgebungsvariablen (siehe GitHub Secrets/Variables):
 - DREMIO_PROJECT_ID   Project ID aus Dremio Cloud -> Project Settings -> General
 - DREMIO_SQL_PATH     voll qualifizierter Pfad zur Tabelle, z.B. "Athena"."pp_dev"."pp"."order_component"
                       (jede Ebene einzeln in doppelten Anführungszeichen)
+- DREMIO_SQL_LIMIT    optional, z.B. "100" - für Testläufe, um Engine-Start
+                      von echtem Datenvolumen als Ursache für lange Laufzeit zu trennen
+- DREMIO_POLL_TIMEOUT_SEC  optional, Default 900 (15 Min)
 """
 
 import os
@@ -26,6 +29,7 @@ BASE_URL = os.environ["DREMIO_BASE_URL"].rstrip("/")
 PAT = os.environ["DREMIO_PAT"]
 PROJECT_ID = os.environ["DREMIO_PROJECT_ID"]
 SQL_PATH = os.environ.get("DREMIO_SQL_PATH", '"order_component"')
+SQL_LIMIT = os.environ.get("DREMIO_SQL_LIMIT", "").strip()
 
 API_ROOT = f"{BASE_URL}/v0/projects/{PROJECT_ID}"
 
@@ -34,8 +38,8 @@ HEADERS = {
     "Content-Type": "application/json",
 }
 
-POLL_INTERVAL_SEC = 3
-POLL_TIMEOUT_SEC = 600
+POLL_INTERVAL_SEC = 5
+POLL_TIMEOUT_SEC = int(os.environ.get("DREMIO_POLL_TIMEOUT_SEC", "900"))
 PAGE_SIZE = 500
 
 
@@ -60,18 +64,26 @@ def submit_query(sql: str) -> str:
 
 def wait_for_job(job_id: str) -> dict:
     elapsed = 0
+    last_state = None
     while elapsed < POLL_TIMEOUT_SEC:
         resp = requests.get(f"{API_ROOT}/job/{job_id}", headers=HEADERS)
         resp.raise_for_status()
         job = _parse_json(resp)
         state = job["jobState"]
+        if state != last_state:
+            print(f"  Status nach {elapsed}s: {state}")
+            last_state = state
         if state == "COMPLETED":
             return job
         if state in ("FAILED", "CANCELED"):
             raise RuntimeError(f"Dremio Job {job_id} beendet mit Status {state}: {job.get('errorMessage')}")
         time.sleep(POLL_INTERVAL_SEC)
         elapsed += POLL_INTERVAL_SEC
-    raise TimeoutError(f"Dremio Job {job_id} hat das Timeout von {POLL_TIMEOUT_SEC}s überschritten")
+    raise TimeoutError(
+        f"Dremio Job {job_id} hat das Timeout von {POLL_TIMEOUT_SEC}s überschritten "
+        f"(letzter bekannter Status: {last_state}). Falls der Status lange bei STARTING/"
+        f"ENQUEUED hing, ist das ein Engine-Cold-Start-Problem, keine Query-Ursache."
+    )
 
 
 def fetch_all_rows(job_id: str) -> tuple[list[str], list[list]]:
@@ -109,6 +121,8 @@ def write_csv(columns: list[str], rows: list[list], path: str) -> None:
 
 def main() -> None:
     sql = f"SELECT * FROM {SQL_PATH}"
+    if SQL_LIMIT:
+        sql += f" LIMIT {SQL_LIMIT}"
     print(f"Starte Dremio Query: {sql}")
 
     job_id = submit_query(sql)
