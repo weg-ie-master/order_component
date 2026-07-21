@@ -14,6 +14,8 @@ Benötigte Umgebungsvariablen (siehe GitHub Secrets/Variables):
 - DREMIO_PROJECT_ID   Project ID aus Dremio Cloud -> Project Settings -> General
 - DREMIO_SQL_PATH     voll qualifizierter Pfad zur Tabelle, z.B. "Athena"."pp_dev"."pp"."order_component"
                       (jede Ebene einzeln in doppelten Anführungszeichen)
+- DREMIO_SQL_WHERE    optional, WHERE-Bedingung ohne das Wort "WHERE",
+                      z.B. plant = '4103'  (Anführungszeichen nur, falls Spalte Text ist)
 - DREMIO_SQL_LIMIT    optional, z.B. "100" - für Testläufe, um Engine-Start
                       von echtem Datenvolumen als Ursache für lange Laufzeit zu trennen
 - DREMIO_POLL_TIMEOUT_SEC  optional, Default 900 (15 Min)
@@ -29,6 +31,7 @@ BASE_URL = os.environ["DREMIO_BASE_URL"].rstrip("/")
 PAT = os.environ["DREMIO_PAT"]
 PROJECT_ID = os.environ["DREMIO_PROJECT_ID"]
 SQL_PATH = os.environ.get("DREMIO_SQL_PATH", '"order_component"')
+SQL_WHERE = os.environ.get("DREMIO_SQL_WHERE", "").strip()
 SQL_LIMIT = os.environ.get("DREMIO_SQL_LIMIT", "").strip()
 
 API_ROOT = f"{BASE_URL}/v0/projects/{PROJECT_ID}"
@@ -121,6 +124,8 @@ def write_csv(columns: list[str], rows: list[list], path: str) -> None:
 
 def main() -> None:
     sql = f"SELECT * FROM {SQL_PATH}"
+    if SQL_WHERE:
+        sql += f" WHERE {SQL_WHERE}"
     if SQL_LIMIT:
         sql += f" LIMIT {SQL_LIMIT}"
     print(f"Starte Dremio Query: {sql}")
